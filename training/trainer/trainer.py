@@ -1,7 +1,3 @@
-# author: Zhiyuan Yan
-# email: zhiyuanyan@link.cuhk.edu.cn
-# date: 2023-03-30
-# description: trainer
 import os
 import sys
 current_file_path = os.path.abspath(__file__)
@@ -12,27 +8,18 @@ sys.path.append(project_root_dir)
 
 import pickle
 import datetime
-import logging
 import numpy as np
-from copy import deepcopy
 from collections import defaultdict
 from tqdm import tqdm
 import time
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.nn import DataParallel
 from torch.utils.tensorboard import SummaryWriter
 from metrics.base_metrics_class import Recorder
-from torch.optim.swa_utils import AveragedModel, SWALR
+from torch.optim.swa_utils import AveragedModel
 from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from sklearn import metrics
 from metrics.utils import get_test_metrics
 
-
-scaler = torch.cuda.amp.GradScaler()
 
 FFpp_pool=['FaceForensics++','FF-DF','FF-F2F','FF-FS','FF-NT']#
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -101,7 +88,6 @@ class Trainer(object):
             self.writers[writer_key] = SummaryWriter(writer_path)
         return self.writers[writer_key]
 
-
     def speed_up(self):
         self.model.to(device)
         self.model.device = device
@@ -110,7 +96,7 @@ class Trainer(object):
             print(f'avai gpus: {num_gpus}')
             # local_rank=[i for i in range(0,num_gpus)]
             self.model = DDP(self.model, device_ids=[self.config['local_rank']],find_unused_parameters=True, output_device=self.config['local_rank'])
-            #self.optimizer =  nn.DataParallel(self.optimizer, device_ids=[int(os.environ['LOCAL_RANK'])])
+            # self.optimizer =  nn.DataParallel(self.optimizer, device_ids=[int(os.environ['LOCAL_RANK'])])
 
     def setTrain(self):
         self.model.train()
@@ -156,7 +142,6 @@ class Trainer(object):
         save_path = os.path.join(save_dir, ckpt_name)
         torch.save(self.swa_model.state_dict(), save_path)
         self.logger.info(f"SWA Checkpoint saved to {save_path}")
-
 
     def save_feat(self, phase, fea, dataset_key):
         save_dir = os.path.join(self.log_dir, phase, dataset_key)
@@ -205,20 +190,12 @@ class Trainer(object):
                 losses = self.model.module.get_losses(data_dict, predictions)
             else:
                 losses = self.model.get_losses(data_dict, predictions)
-                
-            # Scales loss. Calls ``backward()`` on scaled loss to create scaled gradients.
-            # scaler.scale(losses['overall']).backward()
-            # scaler.step(self.optimizer)
-            # scaler.update()
-            # self.optimizer.zero_grad()
-            
+
             self.optimizer.zero_grad()
             losses['overall'].backward()
             self.optimizer.step()
-            
-            return losses, predictions
 
-    
+            return losses, predictions
 
     def train_epoch(
         self,
@@ -234,18 +211,18 @@ class Trainer(object):
             times_per_epoch = 1
 
         self.logger.info(f"===> Length of train dataset {len(train_data_loader)}")
-        #times_per_epoch=4
+        # times_per_epoch=4
         test_step = len(train_data_loader) // times_per_epoch    # test 10 times per epoch
         step_cnt = epoch * len(train_data_loader)
 
         # save the training data_dict
         data_dict = train_data_loader.dataset.data_dict
         self.save_data_dict('train', data_dict, ','.join(self.config['train_dataset']))
-        
+
         # define training recorder
         train_recorder_loss = defaultdict(Recorder)
         train_recorder_metric = defaultdict(Recorder)
-        
+
         total_start_time = time.time()
         # with torch.autocast(device_type='cuda', dtype=torch.float16):
 
@@ -255,9 +232,9 @@ class Trainer(object):
             for key in data_dict.keys():
                 if data_dict[key]!=None and key!='name':
                     data_dict[key]=data_dict[key].cuda()
-                    
+
             losses, predictions = self.train_step(data_dict)
-            
+
             # if iteration % 50 == 0 and self.config['local_rank']==0:
             #     self.logger.info(f"===> Train Epoch: {epoch} iteration: {iteration} Loss: {losses['overall']}")
 
@@ -314,14 +291,14 @@ class Trainer(object):
                 recorder.clear()
             for name, recorder in train_recorder_metric.items():  # clear metric recorder
                 recorder.clear()
-        
+
         step_cnt += 1
         # prof.export_chrome_trace("trace.json")
-        
+
         total_end_time = time.time()
         total_elapsed_time = total_end_time - total_start_time
         self.logger.info(f"Time Taken for Epoch: {total_elapsed_time:.2f}")
-            
+
         # run test
         # if (step_cnt+1) % test_step == 0:
         if epoch % 1 == 0:
@@ -344,7 +321,6 @@ class Trainer(object):
             else:
                 test_best_metric = None
 
-            
         return test_best_metric
 
     def get_respect_acc(self,prob,label):
@@ -361,7 +337,7 @@ class Trainer(object):
         prediction_lists = []
         feature_lists=[]
         label_lists = []
-        
+
         for i, data_dict in tqdm(enumerate(data_loader),total=len(data_loader)):
             # get data
             if 'label_spe' in data_dict:
@@ -433,13 +409,13 @@ class Trainer(object):
             writer.add_scalar(f'test_metrics/acc_real', acc_real, global_step=step)
             writer.add_scalar(f'test_metrics/acc_fake', acc_fake, global_step=step)
         self.logger.info(metric_str)
-        
+
     def test_epoch(self, epoch, iteration, test_data_loaders, step):
         # set model to eval mode
         self.setEval()
-        
+
         self.logger.info(f"===> Length of test dataset {len(test_data_loaders)}")
-        
+
         # define test recorder
         losses_all_datasets = {}
         metrics_all_datasets = {}

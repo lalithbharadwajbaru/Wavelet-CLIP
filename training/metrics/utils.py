@@ -1,7 +1,6 @@
 from sklearn import metrics
 import numpy as np
 
-
 def parse_metric_for_print(metric_dict):
     if metric_dict is None:
         return "\n"

@@ -1,54 +1,11 @@
-'''
-# author: Zhiyuan Yan
-# email: zhiyuanyan@link.cuhk.edu.cn
-# date: 2023-0706
-# description: Class for the CLIPDetector
-
-Functions in the Class are summarized as:
-1. __init__: Initialization
-2. build_backbone: Backbone-building
-3. build_loss: Loss-function-building
-4. features: Feature-extraction
-5. classifier: Classification
-6. get_losses: Loss-computation
-7. get_train_metrics: Training-metrics-computation
-8. get_test_metrics: Testing-metrics-computation
-9. forward: Forward-propagation
-
-Reference:
-@inproceedings{radford2021learning,
-  title={Learning transferable visual models from natural language supervision},
-  author={Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and others},
-  booktitle={International conference on machine learning},
-  pages={8748--8763},
-  year={2021},
-  organization={PMLR}
-}
-'''
-
-import os
-import datetime
 import logging
-import numpy as np
-from sklearn import metrics
-from typing import Union
-from collections import defaultdict
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.nn import DataParallel
-from torch.utils.tensorboard import SummaryWriter
-
 from metrics.base_metrics_class import calculate_metrics_for_train
-
 from .base_detector import AbstractDetector
 from detectors import DETECTOR
-from networks import BACKBONE
 from loss import LOSSFUNC
-from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
-import loralib as lora
+from transformers import AutoProcessor, CLIPModel
 
 logger = logging.getLogger(__name__)
 

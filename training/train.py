@@ -1,24 +1,11 @@
-# author: Zhiyuan Yan
-# email: zhiyuanyan@link.cuhk.edu.cn
-# date: 2023-03-30
-# description: training code.
-
 import os
 import argparse
-from os.path import join
-import cv2
 import random
 import datetime
-import time
 import yaml
-from tqdm import tqdm
-import numpy as np
 from datetime import timedelta
-from copy import deepcopy
-from PIL import Image as pil_image
 
 import torch
-import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.utils.data
@@ -31,7 +18,7 @@ from optimizor.LinearLR import LinearDecayLR
 
 from trainer.trainer import Trainer
 from detectors import DETECTOR
-from dataset import *
+from dataset import DeepfakeAbstractBaseDataset
 from metrics.utils import parse_metric_for_print
 from logger import create_logger, RankFilter
 
@@ -60,47 +47,13 @@ def init_seed(config):
         torch.manual_seed(config['manualSeed'])
         torch.cuda.manual_seed_all(config['manualSeed'])
 
-
 def prepare_training_data(config):
-    # Only use the blending dataset class in training
-    if 'dataset_type' in config and config['dataset_type'] == 'blend':
-        if config['model_name'] == 'facexray':
-            train_set = FFBlendDataset(config)
-        elif config['model_name'] == 'fwa':
-            train_set = FWABlendDataset(config)
-        elif config['model_name'] == 'sbi':
-            train_set = SBIDataset(config, mode='train')
-        elif config['model_name'] == 'lsda':
-            train_set = LSDADataset(config, mode='train')
-        else:
-            raise NotImplementedError(
-                'Only facexray, fwa, sbi, and lsda are currently supported for blending dataset'
-            )
-    elif 'dataset_type' in config and config['dataset_type'] == 'pair':
-        train_set = pairDataset(config, mode='train')  # Only use the pair dataset class in training
-    elif 'dataset_type' in config and config['dataset_type'] == 'iid':
-        train_set = IIDDataset(config, mode='train')
-    elif 'dataset_type' in config and config['dataset_type'] == 'I2G':
-        train_set = I2GDataset(config, mode='train')
-    elif 'dataset_type' in config and config['dataset_type'] == 'lrl':
-        train_set = LRLDataset(config, mode='train')
-    else:
-        train_set = DeepfakeAbstractBaseDataset(
-                    config=config,
-                    mode='train',
-                )
-    if config['model_name'] == 'lsda':
-        from dataset.lsda_dataset import CustomSampler
-        custom_sampler = CustomSampler(num_groups=2*360, n_frame_per_vid=config['frame_num']['train'], batch_size=config['train_batchSize'], videos_per_group=5)
-        train_data_loader = \
-            torch.utils.data.DataLoader(
-                dataset=train_set,
-                batch_size=config['train_batchSize'],
-                num_workers=int(config['workers']),
-                sampler=custom_sampler, 
-                collate_fn=train_set.collate_fn,
-            )
-    elif config['ddp']:
+    train_set = DeepfakeAbstractBaseDataset(
+        config=config,
+        mode="train",
+    )
+
+    if config["ddp"]:
         sampler = DistributedSampler(train_set, drop_last=True)
         train_data_loader = \
             torch.utils.data.DataLoader(
@@ -124,23 +77,15 @@ def prepare_training_data(config):
                 )
     return train_data_loader
 
-
 def prepare_testing_data(config):
     def get_test_data_loader(config, test_name):
         # update the config dictionary with the specific testing dataset
         config = config.copy()  # create a copy of config to avoid altering the original one
-        config['test_dataset'] = test_name  # specify the current test dataset
-        if not config.get('dataset_type', None) == 'lrl':
-            test_set = DeepfakeAbstractBaseDataset(
-                    config=config,
-                    mode='test',
-            )
-        else:
-            test_set = LRLDataset(
-                config=config,
-                mode='test',
-            )
-
+        config["test_dataset"] = test_name  # specify the current test dataset
+        test_set = DeepfakeAbstractBaseDataset(
+            config=config,
+            mode="test",
+        )
         test_data_loader = \
             torch.utils.data.DataLoader(
                 dataset=test_set,
@@ -158,7 +103,6 @@ def prepare_testing_data(config):
     for one_test_name in config['test_dataset']:
         test_data_loaders[one_test_name] = get_test_data_loader(config, one_test_name)
     return test_data_loaders
-
 
 def choose_optimizer(model, config):
     opt_name = config['optimizer']['type']
@@ -217,7 +161,6 @@ def choose_scheduler(config, optimizer):
         )
     else:
         raise NotImplementedError('Scheduler {} is not implemented'.format(config['lr_scheduler']))
-
 
 def choose_metric(config):
     metric_scoring = config['metric_scoring']
@@ -289,25 +232,7 @@ def main():
     # prepare the model (detector)
     model_class = DETECTOR[config['model_name']]
     model = model_class(config)
-    
-    # disc_weights = torch.load("/home/lalith.bharadwaj/DeepfakeBench/training/pretrained/CelebAHQ_256.pt",
-    #                           map_location=torch.device("cpu"))['d']
-    
-    # #list of layers you do not want to keep
-    # layers_to_load = ['final_linear.0.bias', 'final_linear.0.weight_orig', 
-    #                   'final_linear.0.weight_u', 'final_linear.0.weight_v',
-    #                   'final_linear.1.bias', 'final_linear.2.bias',
-    #                   'final_linear.2.weight_orig', 'final_linear.2.weight_u',
-    #                   'final_linear.2.weight_v'
-    #                 ]
 
-    # # Filter the state dictionary
-    # filtered_state_dict = {k: v for k, v in disc_weights.items() if k not in layers_to_load}
-
-    # model.load_state_dict(filtered_state_dict, strict=False)
-
-    # logger.info("Loaded StyleSwin discriminator weights") 
-    
     # prepare the optimizer
     optimizer = choose_optimizer(model, config)
 
@@ -319,7 +244,7 @@ def main():
 
     # prepare the trainer
     trainer = Trainer(config, model, optimizer, scheduler, logger, metric_scoring)
-    
+
     # start training
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
         trainer.model.epoch = epoch
@@ -329,11 +254,9 @@ def main():
                     test_data_loaders=test_data_loaders,
                 )
         if best_metric is not None:
-            logger.info(f"===> Epoch[{epoch}] end with testing {metric_scoring}: {parse_metric_for_print(best_metric)}!")
+            logger.info(f"===> Epoch[{epoch}] end with testing {metric_scoring}: {parse_metric_for_print(best_metric) !")
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
     # update
-    if 'svdd' in config['model_name']:
-        model.update_R(epoch)
     if scheduler is not None:
         scheduler.step()
 
