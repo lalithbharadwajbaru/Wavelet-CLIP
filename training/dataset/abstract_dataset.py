@@ -4,15 +4,11 @@
 # description: Abstract Base Class for all types of deepfake datasets.
 
 import sys
-
 import lmdb
 
 sys.path.append('.')
 
 import os
-import math
-import yaml
-import glob
 import json
 
 import numpy as np
@@ -20,10 +16,8 @@ from copy import deepcopy
 import cv2
 import random
 from PIL import Image
-from collections import defaultdict
 
 import torch
-from torch.autograd import Variable
 from torch.utils import data
 from torchvision import transforms as T
 
@@ -54,7 +48,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         Raises:
             NotImplementedError: If mode is not train or test.
         """
-        
+
         # Set the configuration and mode
         self.config = config
         self.mode = mode
@@ -68,7 +62,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         # Dataset dictionary
         self.image_list = []
         self.label_list = []
-        
+
         # Set the dataset dictionary based on the mode
         if mode == 'train':
             dataset_list = config['train_dataset']
@@ -101,17 +95,16 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         assert len(image_list)!=0 and len(label_list)!=0, f"Collect nothing for {mode} mode!"
         self.image_list, self.label_list = image_list, label_list
 
-
         # Create a dictionary containing the image and label lists
         self.data_dict = {
             'image': self.image_list, 
             'label': self.label_list, 
         }
-        
+
         print(f"No of {mode} Images: {len(self.image_list)}", flush=True)
-        
+
         self.transform = self.init_data_aug_method()
-        
+
     def init_data_aug_method(self):
         trans = A.Compose([           
             A.HorizontalFlip(p=self.config['data_aug']['flip_prob']),
@@ -138,7 +131,6 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         rescaled_landmarks = landmarks * scale_factor
         return rescaled_landmarks
 
-
     def collect_img_and_label_for_one_dataset(self, dataset_name: str):
         """Collects image and label lists.
 
@@ -156,7 +148,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         # Initialize the label and frame path lists
         label_list = []
         frame_path_list = []
-        
+
         # Record video name for video-level metrics
         video_name_list = []
         # print('self_config', self.config)
@@ -228,7 +220,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                         # Select self.frame_num frames evenly distributed throughout the video
                         step = total_frames // self.frame_num
                         frame_paths = [frame_paths[i] for i in range(0, total_frames, step)][:self.frame_num]
-                
+
                 # If video-level methods, crop clips from the selected frames if needed
                 if self.video_level:
                     if self.clip_size is None:
@@ -267,7 +259,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
 
                     else:
                         print(f"Skipping video {unique_video_name} because it has less than clip_size ({self.clip_size}) frames ({total_frames}).")
-                
+
                 # Otherwise, extend the label and frame paths to the lists according to the number of frames
                 else:
                     # Extend the label and frame paths to the lists according to the number of frames
@@ -275,15 +267,14 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                     frame_path_list.extend(frame_paths)
                     # video name save
                     video_name_list.extend([unique_video_name] * len(frame_paths))
-            
+
         # Shuffle the label and frame path lists in the same order
         shuffled = list(zip(label_list, frame_path_list, video_name_list))
         random.shuffle(shuffled)
         label_list, frame_path_list, video_name_list = zip(*shuffled)
-        
+
         return frame_path_list, label_list, video_name_list
 
-     
     def load_rgb(self, file_path):
         """
         Load an RGB image from a file path and resize it to a specified resolution.
@@ -317,7 +308,6 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (size, size), interpolation=cv2.INTER_CUBIC)
         return Image.fromarray(np.array(img, dtype=np.uint8))
-
 
     def load_mask(self, file_path):
         """
@@ -425,10 +415,10 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         if augmentation_seed is not None:
             random.seed(augmentation_seed)
             np.random.seed(augmentation_seed)
-        
+
         # Create a dictionary of arguments
         kwargs = {'image': img}
-        
+
         # Check if the landmark and mask are not None
         if landmark is not None:
             kwargs['keypoints'] = landmark
@@ -440,7 +430,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
 
         # Apply data augmentation
         transformed = self.transform(**kwargs)
-        
+
         # Get the augmented image, landmark, and mask
         augmented_img = transformed['image']
         augmented_landmark = transformed.get('keypoints')
@@ -513,7 +503,6 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 image_trans, landmarks_trans, mask_trans = self.data_aug(image, landmarks, mask, augmentation_seed)
             else:
                 image_trans, landmarks_trans, mask_trans = deepcopy(image), deepcopy(landmarks), deepcopy(mask)
-            
 
             # To tensor and normalize
             if not no_norm:
@@ -545,7 +534,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 mask_tensors = mask_tensors[0]
 
         return image_tensors, label, landmark_tensors, mask_tensors
-    
+
     @staticmethod
     def collate_fn(batch):
         """
@@ -561,11 +550,11 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         """
         # Separate the image, label, landmark, and mask tensors
         images, labels, landmarks, masks = zip(*batch)
-        
+
         # Stack the image, label, landmark, and mask tensors
         images = torch.stack(images, dim=0)
         labels = torch.LongTensor(labels)
-        
+
         # Special case for landmarks and masks if they are None
         if not any(landmark is None or (isinstance(landmark, list) and None in landmark) for landmark in landmarks):
             landmarks = torch.stack(landmarks, dim=0)
@@ -600,26 +589,3 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         """
         assert len(self.image_list) == len(self.label_list), 'Number of images and labels are not equal'
         return len(self.image_list)
-
-
-if __name__ == "__main__":
-    with open('/home/lalith.bharadwaj/DeepfakeBench/training/config/detector/video_baseline.yaml', 'r') as f:
-        config = yaml.safe_load(f)
-    train_set = DeepfakeAbstractBaseDataset(
-                config = config,
-                mode = 'train', 
-            )
-    train_data_loader = \
-        torch.utils.data.DataLoader(
-            dataset=train_set,
-            batch_size=config['train_batchSize'],
-            shuffle=True, 
-            num_workers=0,
-            collate_fn=train_set.collate_fn,
-        )
-    from tqdm import tqdm
-    for iteration, batch in enumerate(tqdm(train_data_loader)):
-        # print(iteration)
-        ...
-        # if iteration > 10:
-        #     break

@@ -1,14 +1,7 @@
-"""
-eval pretained model.
-"""
-
 import os
 import numpy as np
-from os.path import join
 import cv2
 import random
-import datetime
-import time
 import yaml
 from tqdm import tqdm
 from PIL import Image
@@ -25,7 +18,6 @@ from PIL import Image
 from sklearn import metrics
 
 import argparse
-from logger import create_logger
 
 parser = argparse.ArgumentParser(description="Process some paths.")
 parser.add_argument(
@@ -36,7 +28,6 @@ parser.add_argument(
 )
 parser.add_argument("--test_dataset", nargs="+")
 parser.add_argument("--weights_path", type=str, default="./training/weights")
-# parser.add_argument("--lmdb", action='store_true', default=False)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -52,29 +43,14 @@ def init_seed(config):
 
 
 def get_test_metrics(y_pred, y_true):
-    # print(f"==>> y_pred: {y_pred}")
-    # print(f"==>> y_true: {y_true}")
-    # print(f"==>> y_pred.shape: {y_pred.shape}")
-    # print(f"==>> y_true.shape: {y_true.shape}")
     y_pred = y_pred.squeeze()
-    # print(f"==>> y_pred.shape squeeze: {y_pred.shape}")
-    # For UCF, where labels for different manipulations are not consistent.
-    # print(f"==>> y_true[y_true >= 1].shape: {y_true[y_true >= 1]}")
-    # print(f"==>> y_true >= 1.shape: {y_true >= 1}")
     y_true[y_true >= 1] = 1
     # auc
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_pred, pos_label=1)
-    # print(f"==>> fpr: {fpr}")
-    # print(f"==>> tpr: {tpr}")
-    # print(f"==>> thresholds: {thresholds}")
     auc = metrics.auc(fpr, tpr)
-    # auc = None
-    # print(f"==>> auc: {auc}")
     # eer
     fnr = 1 - tpr
-    # print(f"==>> fnr: {fnr}")
     eer = fpr[np.nanargmin(np.absolute((fnr - fpr)))]
-    # eer = None
     # ap
     ap = metrics.average_precision_score(y_true, y_pred)
     # acc
@@ -96,10 +72,8 @@ class CustomImageDataset(Dataset):
         self.transform = transform
         ####### Generated Image ##########
         self.img_dir = img_dir
-        self.img_labels = np.ones(len(os.listdir(self.img_dir)))[
-            :10000
-        ]  # or np.zeros(len(os.listdir(self.img_dir)))
-        self.img_files = sorted(os.listdir(self.img_dir))[:10000]
+        self.img_labels = np.ones(len(os.listdir(self.img_dir)))
+        self.img_files = sorted(os.listdir(self.img_dir))
         ### Real Images #####
         self.celab_dir = "./sampled_celebahq_50K/CelebA_Real/"
         self.celaba_real = sorted(os.listdir(self.celab_dir))
@@ -229,24 +203,10 @@ def test_epoch(model, test_data_loaders):
     # testing for all test data
     keys = test_data_loaders.keys()
     for key in keys:
-        # np_outfile_root = f"./clip_features/{key}"
-
-        # if os.path.isdir(np_outfile_root):
-        #     print("Exists")
-        # else:
-        #     print("Doesn't exists")
-        #     os.makedirs(np_outfile_root)
-
         # compute loss for each dataset
         predictions_nps, cls_pred_nps, label_nps, feat_nps = test_one_dataset(
             model, test_data_loaders[key]
         )
-
-        # np.save(f"{np_outfile_root}/clip_pred_pob.npy", predictions_nps)
-        # np.save(f"{np_outfile_root}/clip_cls_pred.npy", cls_pred_nps)
-        # np.save(f"{np_outfile_root}/clip_labels.npy", label_nps)
-        # np.save(f"{np_outfile_root}/clip_feat.npy", feat_nps)
-
         # compute metric for each dataset
         metric_one_dataset = get_test_metrics(y_pred=predictions_nps, y_true=label_nps)
         metrics_all_datasets[key] = metric_one_dataset
@@ -289,9 +249,6 @@ def main():
     # set cudnn benchmark if needed
     if config["cudnn"]:
         cudnn.benchmark = True
-    # print('config', config)
-    # print('config2', config2)
-    # prepare the testing data loader
     new_config = {**config, **config2}
     test_data_loaders = prepare_testing_data(new_config)
 

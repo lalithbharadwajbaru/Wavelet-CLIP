@@ -1,47 +1,30 @@
 """
 eval pretained model.
 """
-import os
+
 import numpy as np
-from os.path import join
-import cv2
 import random
-import datetime
-import time
 import yaml
-import pickle
 from tqdm import tqdm
-from copy import deepcopy
-from PIL import Image as pil_image
 from metrics.utils import get_test_metrics
 import torch
-import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
 import torch.utils.data
-import torch.optim as optim
-
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
-from dataset.ff_blend import FFBlendDataset
-from dataset.fwa_blend import FWABlendDataset
-from dataset.pair_dataset import pairDataset
-
-from trainer.trainer import Trainer
 from detectors import DETECTOR
-from metrics.base_metrics_class import Recorder
-from collections import defaultdict
-
 import argparse
-from logger import create_logger
 
 parser = argparse.ArgumentParser(description='Process some paths.')
-parser.add_argument('--detector_path', type=str, 
-                    default='/home/lalith/DeepfakeBench/training/config/detector/resnet34.yaml',
-                    help='path to detector YAML file')
+parser.add_argument(
+    "--detector_path",
+    type=str,
+    default="./training/config/detector/clip.yaml",
+    help="path to detector YAML file",
+)
 parser.add_argument("--test_dataset", nargs="+")
-parser.add_argument('--weights_path', type=str, default='/home/lalith/DeepfakeBench/training/weights')
-#parser.add_argument("--lmdb", action='store_true', default=False)
+parser.add_argument("--weights_path", type=str, default="./training/weights")
+# parser.add_argument("--lmdb", action='store_true', default=False)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,9 +94,9 @@ def test_one_dataset(model, data_loader):
         prediction_lists += list(predictions['prob'].cpu().detach().numpy())
         cls_prediction_lists += list(predictions['cls'].cpu().detach().numpy())
         feature_lists += list(predictions['feat'].cpu().detach().numpy())
-    
+
     return np.array(prediction_lists), np.array(cls_prediction_lists), np.array(label_lists), np.array(feature_lists)
-    
+
 def test_epoch(model, test_data_loaders):
     # set model to eval mode
     model.eval()
@@ -124,29 +107,17 @@ def test_epoch(model, test_data_loaders):
     # testing for all test data
     keys = test_data_loaders.keys()
     for key in keys:
-        # np_outfile_root = f"./clip_features/{key}" 
-        
-        # if os.path.isdir(np_outfile_root):
-        #     print("Exists")
-        # else:
-        #     print("Doesn't exists")
-        #     os.makedirs(np_outfile_root)
-            
         data_dict = test_data_loaders[key].dataset.data_dict
-        
+
         # compute loss for each dataset
         predictions_nps, cls_pred_nps, label_nps, feat_nps = test_one_dataset(model, test_data_loaders[key])
 
-        # np.save(f"{np_outfile_root}/clip_pred_pob.npy", predictions_nps)
-        # np.save(f"{np_outfile_root}/clip_cls_pred.npy", cls_pred_nps)
-        # np.save(f"{np_outfile_root}/clip_labels.npy", label_nps)
-        # np.save(f"{np_outfile_root}/clip_feat.npy", feat_nps)
-        
         # compute metric for each dataset
-        metric_one_dataset = get_test_metrics(y_pred=predictions_nps, y_true=label_nps,
-                                              img_names=data_dict['image'])
+        metric_one_dataset = get_test_metrics(
+            y_pred=predictions_nps, y_true=label_nps, img_names=data_dict["image"]
+        )
         metrics_all_datasets[key] = metric_one_dataset
-        
+
         # info for each dataset
         tqdm.write(f"dataset: {key}")
         for k, v in metric_one_dataset.items():
@@ -214,5 +185,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
