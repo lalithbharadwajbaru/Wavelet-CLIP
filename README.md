@@ -216,6 +216,12 @@ python3 training/gen_test.py --detector_path ./training/config/detector/clip_wav
 </table>
 
 # Citation
-```bash
+```
+@article{baru2024harnessing,
+  title={Harnessing Wavelet Transformations for Generalizable Deepfake Forgery Detection},
+  author={Baru, Lalith Bharadwaj and Patel, Shilhora Akshay and Boddeda, Rohit},
+  journal={arXiv preprint arXiv:2409.18301},
+  year={2024}
+}
 ```
 
