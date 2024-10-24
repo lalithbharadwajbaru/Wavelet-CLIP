@@ -1,35 +1,23 @@
-"""
-eval pretained model.
-"""
-
 import numpy as np
 import random
 import yaml
-from tqdm import tqdm
-from metrics.utils import get_test_metrics
+import logging
+import argparse
 import torch
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.utils.data
+from tqdm import tqdm
+from metrics.utils import get_test_metrics
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 from detectors import DETECTOR
-import argparse
 
-parser = argparse.ArgumentParser(description='Process some paths.')
-parser.add_argument(
-    "--detector_path",
-    type=str,
-    default="./training/config/detector/clip.yaml",
-    help="path to detector YAML file",
-)
-parser.add_argument("--test_dataset", nargs="+")
-parser.add_argument("--weights_path", type=str, default="./training/weights")
-# parser.add_argument("--lmdb", action='store_true', default=False)
-args = parser.parse_args()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def init_seed(config):
+    """Initialize random seed for reproducibility."""
     if config['manualSeed'] is None:
         config['manualSeed'] = random.randint(1, 10000)
     random.seed(config['manualSeed'])
@@ -37,151 +25,156 @@ def init_seed(config):
     if config['cuda']:
         torch.cuda.manual_seed_all(config['manualSeed'])
 
-
 def prepare_testing_data(config):
-    def get_test_data_loader(config, test_name):
-        # update the config dictionary with the specific testing dataset
-        config = config.copy()  # create a copy of config to avoid altering the original one
-        config['test_dataset'] = test_name  # specify the current test dataset
-        test_set = DeepfakeAbstractBaseDataset(
-                config=config,
-                mode='test', 
-            )
-        test_data_loader = \
-            torch.utils.data.DataLoader(
-                dataset=test_set, 
-                batch_size=config['test_batchSize'],
-                shuffle=False, 
-                num_workers=int(config['workers']),
-                collate_fn=test_set.collate_fn,
-                drop_last=False
-            )
-        return test_data_loader
+    """Prepare DataLoader for testing datasets."""
+    def get_test_data_loader(test_name):
+        config_copy = config.copy()
+        config_copy['test_dataset'] = test_name
+        test_set = DeepfakeAbstractBaseDataset(config=config_copy, mode='test')
+        return torch.utils.data.DataLoader(
+            dataset=test_set,
+            batch_size=config['test_batchSize'],
+            shuffle=False,
+            num_workers=int(config['workers']),
+            collate_fn=test_set.collate_fn,
+            drop_last=False
+        )
 
     test_data_loaders = {}
-    for one_test_name in config['test_dataset']:
-        test_data_loaders[one_test_name] = get_test_data_loader(config, one_test_name)
+    for test_name in config['test_dataset']:
+        test_data_loaders[test_name] = get_test_data_loader(test_name)
     return test_data_loaders
 
-
 def choose_metric(config):
+    """Choose the metric for evaluation."""
     metric_scoring = config['metric_scoring']
     if metric_scoring not in ['eer', 'auc', 'acc', 'ap']:
-        raise NotImplementedError('metric {} is not implemented'.format(metric_scoring))
+        raise NotImplementedError(f'Metric {metric_scoring} is not implemented.')
     return metric_scoring
 
-
 def test_one_dataset(model, data_loader):
-    cls_prediction_lists = []
-    prediction_lists = []
-    feature_lists = []
-    label_lists = []
-    for i, data_dict in tqdm(enumerate(data_loader), total=len(data_loader)):
-        # get data
-        data, label, mask, landmark = \
-        data_dict['image'], data_dict['label'], data_dict['mask'], data_dict['landmark']
+    """Test the model on a single dataset and return predictions and metrics."""
+    cls_prediction_lists, prediction_lists, feature_lists, label_lists = [], [], [], []
+    
+    for data_dict in tqdm(data_loader, total=len(data_loader)):
+        data, label, mask, landmark = (
+            data_dict['image'], 
+            data_dict['label'], 
+            data_dict['mask'], 
+            data_dict['landmark']
+        )
         label = torch.where(data_dict['label'] != 0, 1, 0)
-        # move data to GPU
+
         data_dict['image'], data_dict['label'] = data.to(device), label.to(device)
         if mask is not None:
             data_dict['mask'] = mask.to(device)
         if landmark is not None:
             data_dict['landmark'] = landmark.to(device)
 
-        # model forward without considering gradient computation
         predictions = inference(model, data_dict)
-        label_lists += list(data_dict['label'].cpu().detach().numpy())
-        prediction_lists += list(predictions['prob'].cpu().detach().numpy())
-        cls_prediction_lists += list(predictions['cls'].cpu().detach().numpy())
-        feature_lists += list(predictions['feat'].cpu().detach().numpy())
+        label_lists.extend(label.cpu().numpy())
+        prediction_lists.extend(predictions['prob'].cpu().numpy())
+        cls_prediction_lists.extend(predictions['cls'].cpu().numpy())
+        feature_lists.extend(predictions['feat'].cpu().numpy())
 
     return np.array(prediction_lists), np.array(cls_prediction_lists), np.array(label_lists), np.array(feature_lists)
 
 def test_epoch(model, test_data_loaders):
-    # set model to eval mode
+    """Run a test epoch across all datasets."""
     model.eval()
-
-    # define test recorder
     metrics_all_datasets = {}
 
-    # testing for all test data
-    keys = test_data_loaders.keys()
-    for key in keys:
-        data_dict = test_data_loaders[key].dataset.data_dict
+    for dataset_name, data_loader in test_data_loaders.items():
+        data_dict = data_loader.dataset.data_dict
+        predictions_nps, cls_pred_nps, label_nps, feat_nps = test_one_dataset(model, data_loader)
 
-        # compute loss for each dataset
-        predictions_nps, cls_pred_nps, label_nps, feat_nps = test_one_dataset(model, test_data_loaders[key])
-
-        # compute metric for each dataset
         metric_one_dataset = get_test_metrics(
             y_pred=predictions_nps, y_true=label_nps, img_names=data_dict["image"]
         )
-        metrics_all_datasets[key] = metric_one_dataset
+        metrics_all_datasets[dataset_name] = metric_one_dataset
 
-        # info for each dataset
-        tqdm.write(f"dataset: {key}")
-        for k, v in metric_one_dataset.items():
-            tqdm.write(f"{k}: {v}")
+        logger.info(f"Dataset: {dataset_name}")
+        for metric, value in metric_one_dataset.items():
+            logger.info(f"{metric}: {value}")
 
     return metrics_all_datasets
 
 @torch.no_grad()
 def inference(model, data_dict):
-    predictions = model(data_dict, inference=True)
-    return predictions
+    """Perform inference with the model."""
+    return model(data_dict, inference=True)
 
+def load_model(config, weights_path):
+    """Load the model with the specified weights."""
+    model_class = DETECTOR[config['model_name']]
+    model = model_class(config).to(device)
+    
+    if weights_path:
+        try:
+            ckpt = torch.load(weights_path, map_location=device)
+            state_dict = {k[len('module.'):]: v for k, v in ckpt.items()}
+            model.load_state_dict(state_dict, strict=True)
+            logger.info('Checkpoint loaded successfully!')
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+            exit(1)
+    else:
+        logger.warning('No pre-trained weights provided.')
+    
+    return model
 
 def main():
-    # parse options and load config
-    with open(args.detector_path, 'r') as f:
-        config = yaml.safe_load(f)
-    with open('./training/config/test_config.yaml', 'r') as f:
-        config2 = yaml.safe_load(f)
+    parser = argparse.ArgumentParser(description='Evaluate a pre-trained model.')
+    parser.add_argument("--detector_path", type=str, default="./training/config/detector/clip.yaml", help="Path to detector YAML file.")
+    parser.add_argument("--test_dataset", nargs="+", help="List of test datasets.")
+    parser.add_argument("--weights_path", type=str, default="./training/weights", help="Path to model weights.")
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load configurations
+    try:
+        with open(args.detector_path, 'r') as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error(f"Configuration file {args.detector_path} not found.")
+        exit(1)
+
+    try:
+        with open('./training/config/test_config.yaml', 'r') as f:
+            config2 = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error("Test configuration file not found.")
+        exit(1)
+
     if 'label_dict' in config:
-        config2['label_dict']=config['label_dict']
-    weights_path = None
-    # If arguments are provided, they will overwrite the yaml settings
+        config2['label_dict'] = config['label_dict']
+
+    # Update config with command-line arguments
     if args.test_dataset:
         config['test_dataset'] = args.test_dataset
         config2['test_dataset'] = args.test_dataset
     if args.weights_path:
         config['weights_path'] = args.weights_path
         config2['weights_path'] = args.weights_path
-        weights_path = args.weights_path
-    
-    # init seed
+
+    # Initialize seed
     init_seed(config)
 
-    # set cudnn benchmark if needed
-    if config['cudnn']:
+    # Set cuDNN benchmark
+    if config.get('cudnn', False):
         cudnn.benchmark = True
-    # print('config', config)
-    # print('config2', config2)
-    # prepare the testing data loader
+
+    # Prepare testing data loaders
     new_config = {**config, **config2}
     test_data_loaders = prepare_testing_data(new_config)
-    
-    # prepare the model (detector)
-    model_class = DETECTOR[config['model_name']]
-    model = model_class(config).to(device)
-    epoch = 0
-    if weights_path:
-        try:
-            epoch = int(weights_path.split('/')[-1].split('.')[0].split('_')[2])
-        except:
-            epoch = 0
-            
-        ckpt = torch.load(weights_path, map_location=device)
-        remove_prefix = 'module.'
-        state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in ckpt.items()}
-        model.load_state_dict(state_dict, strict=True)
-        print('===> Load checkpoint done!')
-    else:
-        print('Fail to load the pre-trained weights')
-    
-    # start testing
+
+    # Load the model
+    model = load_model(config, args.weights_path)
+
+    # Start testing
     best_metric = test_epoch(model, test_data_loaders)
-    print('===> Test Done!')
+    logger.info('Testing completed!')
 
 if __name__ == '__main__':
     main()
