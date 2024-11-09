@@ -1,5 +1,4 @@
 # Wavelet-CLIP
-<p align="center">
   <a href="Architechture.jpg" target="_blank">
     <img src="Architechture.jpg" alt="Architecture of the Model" width="800">
   </a>
@@ -7,57 +6,45 @@
 
 This is the codebase for [HARNESSING WAVELET TRANSFORMATIONS FOR GENERALIZABLE DEEPFAKE FORGERY DETECTION](https://arxiv.org/abs/2409.18301)
 
-This repository is based on [SCLBD/DeepfakeBench](https://github.com/SCLBD/DeepfakeBench). Utilizing their framework, we have successfully replicated existing benchmarks while introducing a new model, **Wavelet-CLIP**, which is based on self-supervised training. Our model achieves state-of-the-art performance on the **CDFv1**, **CDFv2**, and **Fsh** datasets.
 # Setup
 ## 1. Installation
 To install the required dependencies and set up the environment, run the following command in your terminal:
 ```bash
 sh install.sh   
 ```
- ## 2. Dataset
+ ## 2. Dataset & Pretrained models
 
-All datasets are sourced from the DeepFakeBench repository, originally obtained from official websites. We are only releasing the preprocessed test sets; to access and preprocess the training sets, please look at the DeepFakeBench repository and follow the same procedure.
+All datasets are sourced from the [SCLBD/DeepfakeBench](https://github.com/SCLBD/DeepfakeBench) repository, originally obtained from official websites. We are releasing the Generated sample sets; to access and preprocess the training sets, please look at the DeepFakeBench repository and follow the same procedure.
 
 <div align="center">
 
-| Dataset Name  | Link |
+| Folder  | Link |
 |---------------|------|
-| Celeb-DF-v1   | -    |
-| Celeb-DF-v2   | -    |
-| FaceShifter   | -    |
+| Generated Data   | [Link](https://mega.nz/folder/KdElBYaJ#nPuF06k5ma1FCf97ypnD5g)    |
+| Pretrained models   | [Link](https://mega.nz/folder/2BMQ0RJK#h_0M09W5GWXKWZvEE7fxOg)  |
 
 </div>
 
-## 3. pre-trained models
-## 4. Training
 
-**_Cross-Data Performance_**: To reproduce the results, use the provided `train.py` script. For specific detectors, download them from [link](https://github.com/lalithbharadwajbaru/Wavelet-CLIP/blob/main/training/config/detector/detector.yaml) and update the path in `./training/config/detector/detector.yaml`. An example command to train on **CDFv1** & **CDFv2** datasets, might look like this:
+## 3. Cross-Data Performance
 
-```bash
-python3 -m torch.distributed.launch --nproc_per_node=4 training/train.py --detector_path ./training/config/detector/detector.yaml --train_dataset "FaceForensics++" --test_dataset "Celeb-DF-v1" "Celeb-DF-v2" --task_target "clip_wavelet" --no-save_feat --ddp
-```
- ## 5.Testing
-
-To reproduce the results, use the provided `test.py` script. For specific detectors, download them from [link](https://github.com/lalithbharadwajbaru/Wavelet-CLIP/blob/main/training/config/detector/clip_wavelet.yaml) and update the path in `./training/config/detector/detector.yaml`. An example command to train on **CDFv1** & **CDFv2** datasets, might look like this:
+To reproduce the results, use the provided `test.py` script. For specific detectors, download them from [link](https://github.com/SCLBD/DeepfakeBench/tree/main/training/detectors) and update the path in `./training/config/detector/detector.yaml`. An example command to test on "Celeb-DF-v1" & "Celeb-DF-v2" & "FaceShifter" datasets using clip_wavelet model, look like this:
 
 ```bash
-python3 training/test.py --detector_path ./training/config/detector/clip_wavelet.yaml --test_dataset "Celeb-DF-v1" "Celeb-DF-v2" "FaceShifter" --weights_path ./training/weights/clip_wavelet_best.pth
+python3 training/test.py --detector_path ./training/config/detector/detector.yaml --test_dataset "Celeb-DF-v1" "Celeb-DF-v2" "FaceShifter" --weights_path ./training/weights/clip_wavelet_best.pth
 ```
-
-## 6. Testing on generated samples
-
-**_Robustness to Unseen Deepfakes_**: To reproduce the results, use the provided `gen_test.py` script. For specific detectors, download them from [link](https://github.com/lalithbharadwajbaru/Wavelet-CLIP/blob/main/training/config/detector/clip_wavelet.yaml) and update the path in `./training/config/detector/clip.wavelet.yaml`. An example command to train on **CDFv1** & **CDFv2** datasets, might look like this:
-
-```bash
-python3 training/gen_test.py --detector_path ./training/config/detector/clip_wavelet.yaml --test_dataset "DDIM" "DDPM" "LDM" --weights_path ./training/weights/clip_wavelet_best.pth
-```
-# Results
 | Model              | Venue      | Backbone         | Protocol         | CDFv1 | CDFv2 | Fsh  | Avg   |
 |--------------------|------------|------------------|------------------|-------|-------|------|-------|
 | CLIP           | CVPR-23    | ViT          | Self-Supervised  | 0.743 | 0.750 | 0.730| 0.747 |
 | **Wavelet-CLIP (ours)** | -      | ViT        | Self-Supervised  | 0.756 | 0.759 | 0.732| 0.749 |
 
+## 4. Robustness to Unseen Deepfakes
 
+To reproduce the results, use the provided `gen_test.py` script. For specific detectors, download them from [link](https://github.com/SCLBD/DeepfakeBench/tree/main/training/detectors) and update the path in `./training/config/detector/detector.yaml`. An example command to test on "DDIM" & "DDPM" & "LDM datasets using clip_wavelet model, look like this:
+
+```bash
+python3 training/gen_test.py --detector_path ./training/config/detector/detector.yaml --test_dataset "DDIM" "DDPM" "LDM" --weights_path ./training/weights/clip_wavelet_best.pth
+```
 <table>
     <thead>
         <tr>
@@ -203,8 +190,8 @@ python3 training/gen_test.py --detector_path ./training/config/detector/clip_wav
         </tr>
         <tr>
             <td><strong>Wavelet-CLIP</strong></td>
-            <td><strong>0.897</strong></td>
-            <td><strong>0.190</strong></td>
+            <td><strong>0.792</strong></td>
+            <td><strong>0.282</strong></td>
             <td><strong>0.886</strong></td>
             <td><strong>0.197</strong></td>
             <td><strong>0.897</strong></td>
@@ -215,6 +202,11 @@ python3 training/gen_test.py --detector_path ./training/config/detector/clip_wav
     </tbody>
 </table>
 
+[Back to Top](https://github.com/lalithbharadwajbaru/Wavelet-CLIP)
+
+# Acknowledgements
+Thanks to the work done by DeepfakeBench, much of the implementation relies on their framework. Please refer to their [paper](https://arxiv.org/pdf/2307.01426) and [repo](https://github.com/SCLBD/DeepfakeBench) for pre-trained weights of other detectors and preprocessed datasets. We thank the authors for releasing their code and models.
+
 # Citation
 ```
 @article{baru2024harnessing,
@@ -224,4 +216,3 @@ python3 training/gen_test.py --detector_path ./training/config/detector/clip_wav
   year={2024}
 }
 ```
-
