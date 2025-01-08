@@ -4,7 +4,7 @@
   </a>
 </p>
 
-This is the codebase for [HARNESSING WAVELET TRANSFORMATIONS FOR GENERALIZABLE DEEPFAKE FORGERY DETECTION](https://arxiv.org/abs/2409.18301)
+This is the codebase for [Wavelet-Driven Generalizable Framework for Deepfake Face Forgery Detection](https://arxiv.org/abs/2409.18301)
 
 # Setup
 ## 1. Installation
@@ -210,8 +210,8 @@ Thanks to the work done by DeepfakeBench, much of the implementation relies on t
 # Citation
 ```
 @article{baru2024harnessing,
-  title={Harnessing Wavelet Transformations for Generalizable Deepfake Forgery Detection},
-  author={Baru, Lalith Bharadwaj and Patel, Shilhora Akshay and Boddeda, Rohit},
+  title={Wavelet-Driven Generalizable Framework for Deepfake Face Forgery Detection},
+  author={Baru, Lalith Bharadwaj and Patel, Shilhora Akshay and Boddeda, Rohit and Gajapaka, Sai Mohan},
   journal={arXiv preprint arXiv:2409.18301},
   year={2024}
 }
