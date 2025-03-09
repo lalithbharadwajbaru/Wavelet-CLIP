@@ -209,10 +209,11 @@ Thanks to the work done by DeepfakeBench, much of the implementation relies on t
 
 # Citation
 ```
-@article{baru2024harnessing,
+@inproceedings{baru2025wavelet,
   title={Wavelet-Driven Generalizable Framework for Deepfake Face Forgery Detection},
-  author={Baru, Lalith Bharadwaj and Patel, Shilhora Akshay and Boddeda, Rohit and Gajapaka, Sai Mohan},
-  journal={arXiv preprint arXiv:2409.18301},
-  year={2024}
+  author={Baru, Lalith Bharadwaj and Boddeda, Rohit and Patel, Shilhora Akshay and Gajapaka, Sai Mohan},
+  booktitle={Proceedings of the Winter Conference on Applications of Computer Vision},
+  pages={1661--1669},
+  year={2025}
 }
 ```
